@@ -130,7 +130,7 @@
     Model: the wound edge advances inwards; a point closes when the edge reaches it. Human edge advance d(t) from
     measured pig full-thickness wounds (Zhang et al., <i>Sci. Adv.</i> 11, eadz5302 (2025), Fig. 6E), extrapolated
     beyond 8 weeks at the mean week 2–8 speed; the scaffold roughly doubles the edge speed. Wolverine: 1 mm/s. Tissue energy 7 kJ/g, density 1.05 g/cm³,
-    basal metabolic rate 100 W. Depth shown ×2.5. Wolverine: torn suit drawn as a layer 1.6 mm above the skin; body hair to scale in length (~8 mm, ~10/cm²), drawn 1 px thick. Wound contraction is ignored.
+    basal metabolic rate 100 W. Skin patch 24 × 14 cm; depth shown ×2.5. Wolverine: torn suit drawn as a layer 1.6 mm above the skin; body hair to scale in length (~8 mm, ~10/cm²), drawn 1 px thick. Wound contraction is ignored.
   </footer>
 </main>
 
@@ -227,11 +227,7 @@ function edt(mask, nx, ny) {                  // distance (cells) from inside ce
 // ---------------- wound model (geometry + distance map)
 let W = null;
 function buildWound(L, Wd, H, shape) {
-  const m = Math.max(0.45 * Wd, 0.1 * L, 6);
-  const Lx = L + 2 * m, Ly = Math.max(Wd + 2 * m, 0.55 * Lx);
-  let dx = Math.min(Lx / 420, Wd / 18);
-  if (Lx / dx > 700) dx = Lx / 700;
-  if (Ly / dx > 360) dx = Ly / 360;
+  const Lx = 240, Ly = 140, dx = Lx / 700;          // skin patch in mm, same for every wound
   const nx = Math.round(Lx / dx) + 1, ny = Math.round(Ly / dx) + 1;
   const a = L / 2, b = Wd / 2, r = rng(7);
   const ph = Array.from({ length: 6 }, () => r() * 6.283);
@@ -581,7 +577,17 @@ let last = performance.now();
 function loop(now) {
   const dt = (now - last) / 1000; last = now;
   if (playing) {
-    prog = Math.min(1000, prog + Math.min(dt, 1) * 1000 / 12);    // 12 s for the whole clock
+    const h = Math.min(dt, 1), tAt = q => T.tMin * Math.pow(T.tMax / T.tMin, q / 1000);
+    const fr = t => [dHuman(t, "blank"), dHuman(t, "scaffold"), V_WOLV * t]
+      .map(d => closedFraction(Math.min(d, W.dmax)));
+    const f0 = fr(tAt(prog));
+    let step = h * 1000 / 12;                                         // 12 s for the clock when nothing closes
+    for (let i = 0; i < 14; i++) {                                    // at most 18 % of a wound closed per second
+      const f1 = fr(tAt(Math.min(1000, prog + step)));
+      if (Math.max(...f1.map((v, j) => v - f0[j])) <= 0.18 * h) break;
+      step /= 2;
+    }
+    prog = Math.min(1000, prog + Math.max(step, h * 1000 / 12 / 40));   // never more than 40x slower
     $("time").value = prog; setTau(tauFromSlider());
     if (prog >= 1000) stop("Replay");
   }
