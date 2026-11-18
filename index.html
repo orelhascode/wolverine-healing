@@ -91,10 +91,10 @@
       <span>Shared clock (log scale): <b id="clockShared">0 s</b></span>
     </div>
     <div class="row">
-      <label>Length <b id="vL"></b><input type="range" id="L" min="10" max="200" step="1" value="100"></label>
-      <label>Width <b id="vW"></b><input type="range" id="W" min="2" max="50" step="1" value="10"></label>
+      <label>Length <b id="vL"></b><input type="range" id="L" min="10" max="200" step="1" value="60"></label>
+      <label>Width <b id="vW"></b><input type="range" id="W" min="2" max="50" step="1" value="35"></label>
       <label>Depth <b id="vH"></b><input type="range" id="H" min="1" max="10" step="0.5" value="5"></label>
-      <label>Shape <select id="shape"><option value="cut">Straight cut</option><option value="oval">Oval</option><option value="rough" selected>Irregular tear</option></select></label>
+      <label>Shape <select id="shape"><option value="cut">Straight cut</option><option value="oval" selected>Round / oval</option><option value="rough">Irregular tear</option></select></label>
     </div>
   </section>
 
@@ -113,7 +113,7 @@
     Model: the wound edge advances inwards; a point closes when the edge reaches it. Human edge advance d(t) from
     measured pig full-thickness wounds (Zhang et al., <i>Sci. Adv.</i> 11, eadz5302 (2025), Fig. 6E), extrapolated
     beyond 8 weeks at the mean week 2–8 speed; the scaffold roughly doubles the edge speed. Wolverine: 1 mm/s. Tissue energy 7 kJ/g, density 1.05 g/cm³,
-    basal metabolic rate 100 W. Depth shown ×2.5. Wolverine's hair to scale in length (~8 mm, ~25/cm²), drawn 1 px thick. Wound contraction is ignored.
+    basal metabolic rate 100 W. Depth shown ×2.5. Wolverine's hair to scale in length (~8 mm, ~10/cm²), drawn 1 px thick. Wound contraction is ignored.
   </footer>
 </main>
 
@@ -290,9 +290,9 @@ function sync(from) {
 }
 for (const v of VIEWS) v.controls.addEventListener("change", () => sync(v));
 
-// Body hair, to scale: terminal hairs ~5-14 mm long, ~70 um thick, emerging at 15-30 deg
-// and lying towards the skin along a smooth "hair stream" direction; ~25 hairs/cm^2 (a hairy forearm).
-const HAIR = { density: 0.25, lMean: 8, lSpread: 0.35, angle0: [15, 30], segs: 6, widthPx: 1.0 };
+// Body hair, to scale: terminal hairs ~5-14 mm long, ~70 um thick, standing at 55-80 deg
+// and lying towards the skin along a smooth "hair stream" direction; ~10 hairs/cm^2.
+const HAIR = { density: 0.10, lMean: 8, lSpread: 0.35, angle0: [55, 80], segs: 6, widthPx: 1.2 };
 function buildHair(view) {
   if (view.hair) { view.scene.remove(view.hair); view.hair.geometry.dispose(); view.hair.material.dispose(); }
   const s = view.s, r = rng(11), cand = [];
@@ -316,7 +316,7 @@ function buildHair(view) {
     if (!inside(x0 + 0.95 * len * Math.cos(phi), z0 + 0.95 * len * Math.sin(phi))) { n--; if (r() < 0.002) break; continue; }
     for (let g = 0; g < HAIR.segs; g++) {
       const u = (g + 0.5) / HAIR.segs;
-      const th = th0 * (1 - 0.9 * u);                 // bends down towards the skin
+      const th = th0 * (1 - 0.25 * u);                 // bends down towards the skin
       const ph = phi + curl * u;
       const nx_ = x + step * Math.cos(th) * Math.cos(ph), nz_ = z + step * Math.cos(th) * Math.sin(ph),
             ny_ = y + step * Math.sin(th);
