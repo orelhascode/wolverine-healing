@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wound Healing: Human vs Wolverine</title>
+<meta name="description" content="Interactive 3D model of wound closure, extrapolated from measured pig-skin data (Zhang et al., Sci. Adv. 2025), compared with Wolverine.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f6f4f1; --panel: #ffffff; --ink: #1d1b19; --ink2: #6b6661; --line: #e4e0db;
+    --human: #2a6fc9; --hero: #e0612b; --accent: #21a179;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #151413; --panel: #1f1d1b; --ink: #f0ede9; --ink2: #a8a29b; --line: #34312d;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 14px/1.45 Inter, system-ui, sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; padding: 22px 16px 40px; }
+  h1 { font-size: 22px; font-weight: 600; margin: 0 0 2px; letter-spacing: -0.01em; }
+  .sub { color: var(--ink2); margin: 0 0 18px; }
+  .views { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .view { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .view header { display: flex; justify-content: space-between; align-items: baseline;
+                 padding: 10px 14px 0; }
+  .view h2 { font-size: 13px; font-weight: 600; margin: 0; text-transform: uppercase; letter-spacing: .06em; }
+  .view h2 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px; }
+  .canvas { width: 100%; aspect-ratio: 4 / 3; display: block; cursor: grab; touch-action: none; }
+  .canvas:active { cursor: grabbing; }
+  .readout { display: flex; justify-content: space-between; padding: 0 14px 12px; }
+  .clock { font: 500 20px "JetBrains Mono", monospace; }
+  .pct { font: 500 14px "JetBrains Mono", monospace; color: var(--ink2); align-self: center; }
+  .controls { margin-top: 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+              padding: 14px; display: grid; grid-template-columns: auto 1fr; gap: 12px 16px; align-items: center; }
+  .row { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px 18px; grid-column: 1 / -1; }
+  label { font-size: 12px; color: var(--ink2); display: flex; flex-direction: column; gap: 4px; }
+  label b { color: var(--ink); font-weight: 500; font-family: "JetBrains Mono", monospace; }
+  input[type=range] { width: 100%; accent-color: var(--ink); }
+  select { font: inherit; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px;
+           background: var(--panel); color: var(--ink); }
+  button { font: 500 13px Inter, sans-serif; border: 1px solid var(--ink); background: var(--ink);
+           color: var(--panel); border-radius: 8px; padding: 7px 16px; cursor: pointer; min-width: 84px; }
+  .timebar { display: flex; flex-direction: column; gap: 2px; }
+  .timebar span { font-size: 12px; color: var(--ink2); }
+  .bottom { display: grid; grid-template-columns: 1.6fr 1fr; gap: 14px; margin-top: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+  .card h3 { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
+  svg text { fill: var(--ink2); font: 11px Inter, sans-serif; }
+  .stats { display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; font-size: 13px; }
+  .stats div:nth-child(even) { font-family: "JetBrains Mono", monospace; text-align: right; }
+  footer { color: var(--ink2); font-size: 12px; margin-top: 16px; }
+  footer a { color: inherit; }
+  @media (max-width: 820px) {
+    .views, .bottom { grid-template-columns: 1fr; }
+    .row { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>How fast does a wound close? Human vs Wolverine</h1>
+  <p class="sub">Same wound, same clock. Drag either view to rotate (limited to ±60°).</p>
+
+  <section class="views">
+    <article class="view">
+      <header><h2><span class="dot" style="background:var(--human)"></span><span id="humanTitle">Human</span></h2></header>
+      <canvas class="canvas" id="cvH"></canvas>
+      <div class="readout"><span class="clock" id="clockH">0 s</span><span class="pct" id="pctH">0% closed</span></div>
+    </article>
+    <article class="view">
+      <header><h2><span class="dot" style="background:var(--hero)"></span>Wolverine</h2></header>
+      <canvas class="canvas" id="cvW"></canvas>
+      <div class="readout"><span class="clock" id="clockW">0 s</span><span class="pct" id="pctW">0% closed</span></div>
+    </article>
+  </section>
+
+  <section class="controls">
+    <button id="play">Play</button>
+    <div class="timebar">
+      <input type="range" id="time" min="0" max="1000" value="0">
+      <span>Shared clock (log scale): <b id="clockShared">0 s</b></span>
+    </div>
+    <div class="row">
+      <label>Length <b id="vL"></b><input type="range" id="L" min="10" max="200" step="1" value="100"></label>
+      <label>Width <b id="vW"></b><input type="range" id="W" min="2" max="50" step="1" value="10"></label>
+      <label>Depth <b id="vH"></b><input type="range" id="H" min="1" max="10" step="0.5" value="5"></label>
+      <label>Shape <select id="shape"><option value="cut">Straight cut</option><option value="oval">Oval</option><option value="rough" selected>Irregular tear</option></select></label>
+      <label>Human treatment <select id="treat"><option value="blank">Untreated</option><option value="scaffold">Nanofibre scaffold</option></select></label>
+    </div>
+  </section>
+
+  <section class="bottom">
+    <div class="card">
+      <h3>Wound closed vs time</h3>
+      <svg id="chart" viewBox="0 0 640 230" width="100%"></svg>
+    </div>
+    <div class="card">
+      <h3>Budget for this wound</h3>
+      <div class="stats" id="stats"></div>
+    </div>
+  </section>
+
+  <footer>
+    Model: the wound edge advances inwards; a point closes when the edge reaches it. Human edge advance d(t) from
+    measured pig full-thickness wounds (Zhang et al., <i>Sci. Adv.</i> 11, eadz5302 (2025), Fig. 6E), extrapolated
+    beyond 8 weeks at the mean week 2–8 speed. Wolverine: 1 mm/s. Tissue energy 7 kJ/g, density 1.05 g/cm³,
+    basal metabolic rate 100 W. Depth shown ×2.5. Wound contraction is ignored.
+  </footer>
+</main>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+// ---------------- measured data: remaining area (%) at weeks 0,2,4,6,8 (Fig. 6E)
+const R0 = 12.5;                               // mm, pig wound radius
+const DAYS = [0, 14, 28, 42, 56];
+const REM = { blank: [100, 90.0, 77.3, 47.2, 32.9], scaffold: [100, 66.1, 52.1, 8.8, 1.6] };
+const CURVE = {};
+for (const k in REM) {
+  const d = REM[k].map(r => R0 * (1 - Math.sqrt(r / 100)));   // mm the edge has advanced
+  CURVE[k] = { d, vLate: (d[4] - d[1]) / (DAYS[4] - DAYS[1]) };   // mm/day beyond week 8
+}
+const V_WOLV = 1.0;                            // mm/s
+const DAY = 86400;
+
+function dHuman(tSec, k) {                     // edge advance (mm) after tSec
+  const t = tSec / DAY, c = CURVE[k];
+  if (t >= DAYS[4]) return c.d[4] + c.vLate * (t - DAYS[4]);
+  for (let i = 0; i < 4; i++) if (t <= DAYS[i + 1]) {
+    const f = (t - DAYS[i]) / (DAYS[i + 1] - DAYS[i]);
+    return c.d[i] + f * (c.d[i + 1] - c.d[i]);
+  }
+}
+function tHuman(d, k) {                        // seconds to advance d mm
+  const c = CURVE[k];
+  if (d >= c.d[4]) return (DAYS[4] + (d - c.d[4]) / c.vLate) * DAY;
+  for (let i = 0; i < 4; i++) if (d <= c.d[i + 1]) {
+    const f = (d - c.d[i]) / (c.d[i + 1] - c.d[i]);
+    return (DAYS[i] + f * (DAYS[i + 1] - DAYS[i])) * DAY;
+  }
+}
+
+// ---------------- helpers
+const $ = id => document.getElementById(id);
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const mix = (a, b, f) => [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
+const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255);
+const SKIN = hex("#e2b49b"), SKIN2 = hex("#d49f86"), BED = hex("#8c1d22"), DEEP = hex("#5a0e14"),
+      RIM = hex("#6e1a1a"), FRESH = hex("#ee9a96"), SCAR = hex("#e6aea0");
+function fmtTime(s) {
+  if (s < 1) return s.toFixed(2) + " s";
+  if (s < 60) return s.toFixed(s < 10 ? 1 : 0) + " s";
+  if (s < 3600) return (s / 60).toFixed(1) + " min";
+  if (s < DAY) return (s / 3600).toFixed(1) + " h";
+  return (s / DAY).toFixed(s < 10 * DAY ? 1 : 0) + " days";
+}
+function rng(seed) { return () => (seed = (seed * 16807) % 2147483647) / 2147483647; }
+
+// exact Euclidean distance transform (Felzenszwalb & Huttenlocher)
+function edt1d(f, n, out, v, z) {
+  let k = 0; v[0] = 0; z[0] = -1e20; z[1] = 1e20;
+  for (let q = 1; q < n; q++) {
+    let s;
+    while (true) {
+      s = ((f[q] + q * q) - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]);
+      if (s <= z[k]) { k--; if (k < 0) { k = 0; break; } } else break;
+    }
+    k++; v[k] = q; z[k] = s; z[k + 1] = 1e20;
+  }
+  k = 0;
+  for (let q = 0; q < n; q++) { while (z[k + 1] < q) k++; out[q] = (q - v[k]) ** 2 + f[v[k]]; }
+}
+function edt(mask, nx, ny) {                  // distance (cells) from inside cells to nearest outside cell
+  const INF = 1e20, g = new Float64Array(nx * ny), n = Math.max(nx, ny);
+  const f = new Float64Array(n), o = new Float64Array(n), v = new Int32Array(n), z = new Float64Array(n + 1);
+  for (let i = 0; i < nx * ny; i++) g[i] = mask[i] ? INF : 0;
+  for (let x = 0; x < nx; x++) {
+    for (let y = 0; y < ny; y++) f[y] = g[y * nx + x];
+    edt1d(f, ny, o, v, z);
+    for (let y = 0; y < ny; y++) g[y * nx + x] = o[y];
+  }
+  for (let y = 0; y < ny; y++) {
+    for (let x = 0; x < nx; x++) f[x] = g[y * nx + x];
+    edt1d(f, nx, o, v, z);
+    for (let x = 0; x < nx; x++) g[y * nx + x] = Math.sqrt(o[x]);
+  }
+  return g;
+}
+
+// ---------------- wound model (geometry + distance map)
+let W = null;
+function buildWound(L, Wd, H, shape) {
+  const m = Math.max(0.45 * Wd, 0.1 * L, 6);
+  const Lx = L + 2 * m, Ly = Math.max(Wd + 2 * m, 0.55 * Lx);
+  let dx = Math.min(Lx / 420, Wd / 18);
+  if (Lx / dx > 700) dx = Lx / 700;
+  if (Ly / dx > 360) dx = Ly / 360;
+  const nx = Math.round(Lx / dx) + 1, ny = Math.round(Ly / dx) + 1;
+  const a = L / 2, b = Wd / 2, r = rng(7);
+  const ph = Array.from({ length: 6 }, () => r() * 6.283);
+  const mask = new Uint8Array(nx * ny), tex = new Float32Array(nx * ny);
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    const x = -Lx / 2 + i * dx, y = Ly / 2 - j * dx, k = j * nx + i;
+    let inside;
+    if (shape === "oval") inside = (x / a) ** 2 + (y / b) ** 2 <= 1;
+    else {
+      let bb = b, y0 = 0;
+      if (shape === "rough") {
+        const u = x / L;
+        bb = b * (1 + 0.22 * Math.sin(9 * u + ph[0]) + 0.12 * Math.sin(23 * u + ph[1]) + 0.06 * Math.sin(61 * u + ph[2]));
+        y0 = 0.25 * b * Math.sin(5 * u + ph[3]);
+        bb *= Math.sqrt(Math.max(0, 1 - (x / a) ** 6));          // tapered ends
+        inside = Math.abs(x) <= a && Math.abs(y - y0) <= bb;
+      } else {
+        const xs = clamp(x, -Math.max(a - b, 0), Math.max(a - b, 0));
+        inside = Math.hypot(x - xs, y) <= b;
+      }
+    }
+    mask[k] = inside ? 1 : 0;
+    tex[k] = 0.5 + 0.25 * Math.sin(0.9 * x + ph[4]) * Math.sin(1.1 * y + ph[5]) + 0.25 * (r() - 0.5);
+  }
+  const dist = edt(mask, nx, ny);
+  const inv = new Uint8Array(nx * ny); for (let k = 0; k < nx * ny; k++) inv[k] = mask[k] ? 0 : 1;
+  const dOut = edt(inv, nx, ny);
+  let dmax = 0, nIn = 0;
+  const sd = new Float32Array(nx * ny);       // signed distance: + inside, - outside (mm)
+  for (let k = 0; k < nx * ny; k++) {
+    dist[k] *= dx;
+    sd[k] = mask[k] ? dist[k] - 0.5 * dx : -(dOut[k] * dx - 0.5 * dx);
+    if (mask[k]) { nIn++; dmax = Math.max(dmax, dist[k]); }
+  }
+  const sorted = new Float32Array(nIn); let q = 0;
+  for (let k = 0; k < nx * ny; k++) if (mask[k]) sorted[q++] = dist[k];
+  sorted.sort();
+  W = { L, Wd, H, shape, Lx, Ly, nx, ny, dx, mask, dist, sd, tex, dmax, sorted, area: nIn * dx * dx };
+}
+function closedFraction(d) {                 // fraction of wound area with dist <= d
+  const s = W.sorted; let lo = 0, hi = s.length;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (s[mid] <= d) lo = mid + 1; else hi = mid; }
+  return lo / s.length;
+}
+
+// ---------------- 3D scenes
+function makeView(canvas) {
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  const scene = new THREE.Scene();
+  const cam = new THREE.PerspectiveCamera(35, 4 / 3, 0.1, 100);
+  scene.add(new THREE.HemisphereLight(0xfff4ec, 0x5b4a44, 1.1));
+  const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(-4, 8, 6); scene.add(sun);
+  const controls = new OrbitControls(cam, canvas);
+  controls.enablePan = false; controls.enableZoom = false; controls.enableDamping = true;
+  controls.minAzimuthAngle = -Math.PI / 3; controls.maxAzimuthAngle = Math.PI / 3;   // ±60°
+  controls.minPolarAngle = THREE.MathUtils.degToRad(15);
+  controls.maxPolarAngle = THREE.MathUtils.degToRad(70);
+  controls.minDistance = 5; controls.maxDistance = 17;
+  return { renderer, scene, cam, controls, mesh: null };
+}
+const VH = makeView($("cvH")), VW = makeView($("cvW"));
+let syncing = false;
+function sync(from, to) {
+  if (syncing) return; syncing = true;
+  to.cam.position.copy(from.cam.position); to.controls.target.copy(from.controls.target);
+  to.controls.update(); syncing = false;
+}
+VH.controls.addEventListener("change", () => sync(VH, VW));
+VW.controls.addEventListener("change", () => sync(VW, VH));
+
+function buildMesh(view) {
+  if (view.mesh) { view.scene.remove(view.mesh); view.mesh.geometry.dispose(); }
+  const s = 10 / W.Lx;
+  const g = new THREE.PlaneGeometry(W.Lx * s, W.Ly * s, W.nx - 1, W.ny - 1);
+  g.rotateX(-Math.PI / 2);
+  g.setAttribute("color", new THREE.BufferAttribute(new Float32Array(W.nx * W.ny * 3), 3));
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.78, metalness: 0 });
+  view.mesh = new THREE.Mesh(g, mat); view.scene.add(view.mesh); view.s = s; view.lastD = -1;
+}
+function paint(view, d) {
+  if (Math.abs(d - view.lastD) < 1e-6) return;
+  view.lastD = d;
+  const g = view.mesh.geometry, pos = g.attributes.position.array, col = g.attributes.color.array;
+  const hv = Math.min(W.H * view.s * 2.5, 0.9), band = Math.max(0.3 * W.dmax, 2 * W.dx);
+  const sm = e => { const x = clamp(e, 0, 1); return x * x * (3 - 2 * x); };
+  for (let k = 0; k < W.nx * W.ny; k++) {
+    const t = W.tex[k], sd = W.sd[k], dd = Math.max(sd, 0);
+    const skin = mix(SKIN, SKIN2, t * 0.6);
+    let c, y = 0.004 * (t - 0.5);
+    if (sd <= d) {                                           // skin or re-epithelialised
+      const age = sm((d - sd) / band);
+      const healed = mix(mix(FRESH, SCAR, age), skin, 0.3 * age * t);
+      c = mix(healed, skin, sm(-sd / (1.5 * W.dx)));          // blends into skin outside the wound
+      y += -hv * 0.12 * (1 - age) * sm(sd / W.dx + 1);
+    } else {                                                 // still open
+      const f = clamp((sd - d) / Math.max(W.dmax * 0.6, W.dx), 0, 1);
+      y = -hv * Math.pow(clamp(dd / Math.max(W.dmax, W.dx), 0, 1), 0.55);
+      c = mix(mix(RIM, BED, sm((sd - d) / (2 * W.dx))), DEEP, f * 0.7);
+      c = mix(c, BED, 0.15 * t);
+      c = mix(c, d > 0 ? FRESH : skin, 1 - sm((sd - d) / W.dx));  // anti-aliased front
+    }
+    pos[3 * k + 1] = y; col[3 * k] = c[0]; col[3 * k + 1] = c[1]; col[3 * k + 2] = c[2];
+  }
+  g.attributes.position.needsUpdate = true; g.attributes.color.needsUpdate = true;
+  g.computeVertexNormals();
+}
+function resize() {
+  for (const v of [VH, VW]) {
+    const c = v.renderer.domElement, w = c.clientWidth, h = c.clientHeight;
+    if (c.width !== Math.round(w * v.renderer.getPixelRatio())) {
+      v.renderer.setSize(w, h, false); v.cam.aspect = w / h; v.cam.updateProjectionMatrix();
+    }
+  }
+}
+
+// ---------------- state, chart, stats
+let T = { h: 0, w: 0, tMin: 0.1, tMax: 1 }, tau = 0.1, playing = false;
+const treat = () => $("treat").value;
+function recompute() {
+  const L = +$("L").value, Wd = Math.min(+$("W").value, +$("L").value), H = +$("H").value;
+  $("vL").textContent = (L / 10).toFixed(1) + " cm";
+  $("vW").textContent = (Wd / 10).toFixed(1) + " cm";
+  $("vH").textContent = H.toFixed(1) + " mm";
+  buildWound(L, Wd, H, $("shape").value);
+  buildMesh(VH); buildMesh(VW);
+  T.h = tHuman(W.dmax, treat()); T.w = W.dmax / V_WOLV;
+  T.tMin = 0.1; T.tMax = T.h * 1.15;
+  $("humanTitle").textContent = treat() === "scaffold" ? "Human + nanofibre scaffold" : "Human (untreated)";
+  drawChart(); drawStats(); setTau(tauFromSlider());
+}
+const tauFromSlider = () => T.tMin * Math.pow(T.tMax / T.tMin, $("time").value / 1000);
+function setTau(t) {
+  tau = t;
+  const dH = Math.min(dHuman(tau, treat()), W.dmax + 1e-9), dW = Math.min(V_WOLV * tau, W.dmax + 1e-9);
+  paint(VH, dH); paint(VW, dW);
+  const fH = closedFraction(dH), fW = closedFraction(dW);
+  $("clockH").textContent = fmtTime(Math.min(tau, T.h));
+  $("clockW").textContent = fmtTime(Math.min(tau, T.w));
+  $("pctH").textContent = (100 * fH).toFixed(0) + "% closed";
+  $("pctW").textContent = (100 * fW).toFixed(0) + "% closed";
+  $("clockShared").textContent = fmtTime(tau);
+  const cur = $("chart").querySelector("#cursor");
+  if (cur) cur.setAttribute("x1", X(tau)), cur.setAttribute("x2", X(tau));
+}
+const CH = { x0: 46, x1: 625, y0: 200, y1: 14 };
+const X = t => CH.x0 + (CH.x1 - CH.x0) * Math.log(t / T.tMin) / Math.log(T.tMax / T.tMin);
+const Y = f => CH.y0 + (CH.y1 - CH.y0) * f;
+function drawChart() {
+  const svg = $("chart"), css = getComputedStyle(document.documentElement);
+  const line = css.getPropertyValue("--line"), ink2 = css.getPropertyValue("--ink2");
+  let h = "";
+  for (const f of [0, 0.5, 1]) h += `<line x1="${CH.x0}" x2="${CH.x1}" y1="${Y(f)}" y2="${Y(f)}" stroke="${line}"/>
+     <text x="${CH.x0 - 6}" y="${Y(f) + 4}" text-anchor="end">${f * 100}%</text>`;
+  const ticks = [[1, "1 s"], [60, "1 min"], [3600, "1 h"], [DAY, "1 day"], [7 * DAY, "1 wk"], [30 * DAY, "1 mo"], [365 * DAY, "1 yr"]];
+  for (const [t, lab] of ticks) if (t > T.tMin && t < T.tMax)
+    h += `<line x1="${X(t)}" x2="${X(t)}" y1="${CH.y0}" y2="${CH.y0 + 4}" stroke="${ink2}"/>
+          <text x="${X(t)}" y="${CH.y0 + 17}" text-anchor="middle">${lab}</text>`;
+  const curve = (fn, color, dash) => {
+    let p = "";
+    for (let i = 0; i <= 300; i++) {
+      const t = T.tMin * Math.pow(T.tMax / T.tMin, i / 300);
+      p += (i ? "L" : "M") + X(t).toFixed(1) + "," + Y(closedFraction(Math.min(fn(t), W.dmax))).toFixed(1);
+    }
+    return `<path d="${p}" fill="none" stroke="${color}" stroke-width="2" ${dash ? 'stroke-dasharray="4 3"' : ""}/>`;
+  };
+  const other = treat() === "blank" ? "scaffold" : "blank";
+  h += curve(t => dHuman(t, other), "#9a9a9a", true);
+  h += curve(t => dHuman(t, treat()), "#2a6fc9");
+  h += curve(t => V_WOLV * t, "#e0612b");
+  const lx = X(Math.max(T.w * 3, 20)), leg = [["#e0612b", "", "Wolverine"], ["#2a6fc9", "", treat() === "blank" ? "Human, untreated" : "Human + scaffold"],
+    ["#9a9a9a", 'stroke-dasharray="4 3"', other === "blank" ? "Human, untreated" : "Human + scaffold"]];
+  leg.forEach(([c, da, lab], i) => {
+    const y = Y(0.86 - 0.13 * i);
+    h += `<line x1="${lx}" x2="${lx + 18}" y1="${y}" y2="${y}" stroke="${c}" stroke-width="2" ${da}/>
+          <text x="${lx + 24}" y="${y + 4}">${lab}</text>`;
+  });
+  h += `<line id="cursor" x1="0" x2="0" y1="${CH.y1}" y2="${CH.y0}" stroke="${ink2}" stroke-width="1"/>`;
+  svg.innerHTML = h;
+}
+function drawStats() {
+  const m = W.area * W.H * 1.05e-3;             // g
+  const E = m * 7e3, P = E / T.w;
+  const rows = [
+    ["Deepest point from the edge", W.dmax.toFixed(1) + " mm"],
+    ["Human closes in", fmtTime(T.h)],
+    ["Wolverine closes in", fmtTime(T.w)],
+    ["Wolverine is faster by", (() => { const r = T.h / T.w, e = Math.floor(Math.log10(r));
+      return "× " + (r / 10 ** e).toFixed(1) + " × 10<sup>" + e + "</sup>"; })()],
+    ["Tissue to rebuild", m.toFixed(1) + " g"],
+    ["Energy needed", (E / 1e3).toFixed(1) + " kJ"],
+    ["Wolverine's power", (P >= 1e3 ? (P / 1e3).toFixed(1) + " kW" : P.toFixed(0) + " W") + " (" + (P / 100).toFixed(0) + "× BMR)"],
+  ];
+  $("stats").innerHTML = rows.map(([a, b]) => `<div>${a}</div><div>${b}</div>`).join("");
+}
+
+// ---------------- camera, events, loop
+function resetCam() {
+  for (const v of [VH, VW]) {
+    v.cam.position.set(0, 9.6, 8.6); v.controls.target.set(0, -0.1, 0); v.controls.update();
+  }
+}
+for (const id of ["L", "W", "H", "shape", "treat"]) $(id).addEventListener("input", recompute);
+$("time").addEventListener("input", () => { playing = false; $("play").textContent = "Play"; setTau(tauFromSlider()); });
+$("play").addEventListener("click", () => {
+  if ($("time").value >= 1000) $("time").value = 0;
+  playing = !playing; $("play").textContent = playing ? "Pause" : "Play";
+});
+let last = performance.now();
+function loop(now) {
+  const dt = (now - last) / 1000; last = now;
+  if (playing) {
+    const v = Math.min(1000, +$("time").value + dt * 1000 / 12);     // 12 s for the whole clock
+    $("time").value = v; setTau(tauFromSlider());
+    if (v >= 1000) { playing = false; $("play").textContent = "Replay"; }
+  }
+  resize();
+  for (const v of [VH, VW]) { v.controls.update(); v.renderer.render(v.scene, v.cam); }
+  requestAnimationFrame(loop);
+}
+recompute(); resetCam(); requestAnimationFrame(loop);
+</script>
+</body>
+</html>
