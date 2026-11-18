@@ -22,7 +22,10 @@
          font: 14px/1.45 Inter, system-ui, sans-serif; }
   main { max-width: 1180px; margin: 0 auto; padding: 22px 16px 40px; }
   h1 { font-size: 22px; font-weight: 600; margin: 0 0 2px; letter-spacing: -0.01em; }
-  .sub { color: var(--ink2); margin: 0 0 18px; }
+  .sub { color: var(--ink2); margin: 0 0 10px; }
+  .disclaimer { font-size: 12px; color: var(--ink2); margin: 0 0 16px; padding: 8px 12px;
+                border-left: 3px solid var(--hero); background: var(--panel); border-radius: 0 8px 8px 0; }
+  .disclaimer b { color: var(--ink); }
   .views { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
   .view { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
   .view header { display: flex; justify-content: space-between; align-items: baseline;
@@ -65,6 +68,9 @@
 <main>
   <h1>How fast does a wound close? Human, nanotechnology, Wolverine</h1>
   <p class="sub">Same wound, same clock. Drag either view to rotate (limited to ±60°).</p>
+  <p class="disclaimer"><b>Disclaimer.</b> This is a simplified model, not a prediction of real healing. A human wound
+  would not close like this: healing speeds are extrapolated from a pig study (Zhang et al., <i>Sci. Adv.</i> 2025),
+  and the shape, contraction, infection and scarring of real wounds are ignored. Wolverine's speed is fictional.</p>
 
   <section class="views">
     <article class="view">
@@ -113,7 +119,7 @@
     Model: the wound edge advances inwards; a point closes when the edge reaches it. Human edge advance d(t) from
     measured pig full-thickness wounds (Zhang et al., <i>Sci. Adv.</i> 11, eadz5302 (2025), Fig. 6E), extrapolated
     beyond 8 weeks at the mean week 2–8 speed; the scaffold roughly doubles the edge speed. Wolverine: 1 mm/s. Tissue energy 7 kJ/g, density 1.05 g/cm³,
-    basal metabolic rate 100 W. Depth shown ×2.5. Wolverine's hair to scale in length (~8 mm, ~10/cm²), drawn 1 px thick. Wound contraction is ignored.
+    basal metabolic rate 100 W. Depth shown ×2.5. Wolverine: torn suit drawn as a layer 1.6 mm above the skin; body hair to scale in length (~8 mm, ~10/cm²), drawn 1 px thick. Wound contraction is ignored.
   </footer>
 </main>
 
@@ -269,6 +275,9 @@ function makeView(canvas) {
   const cam = new THREE.PerspectiveCamera(35, 4 / 3, 0.1, 100);
   scene.add(new THREE.HemisphereLight(0xfff4ec, 0x5b4a44, 1.1));
   const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(-4, 8, 6); scene.add(sun);
+  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0004;
+  Object.assign(sun.shadow.camera, { left: -7, right: 7, top: 7, bottom: -7, near: 1, far: 30 });
   const controls = new OrbitControls(cam, canvas);
   controls.enablePan = false; controls.enableZoom = false; controls.enableDamping = true;
   controls.minAzimuthAngle = -Math.PI / 3; controls.maxAzimuthAngle = Math.PI / 3;   // ±60°
@@ -290,13 +299,71 @@ function sync(from) {
 }
 for (const v of VIEWS) v.controls.addEventListener("change", () => sync(v));
 
+
+// ---------------- Wolverine's torn yellow suit: a fabric layer above the skin, with a ragged hole
+const SUIT = { lift: 1.6, curl: 1.0, yellow: hex("#e9b91c"), shade: hex("#b8890d"), fray: hex("#8a6410") };
+function buildSuit(view) {
+  if (view.suit) { view.scene.remove(view.suit); view.suit.geometry.dispose(); }
+  if (view.threads) { view.scene.remove(view.threads); view.threads.geometry.dispose(); }
+  const s = view.s, r = rng(23), n = W.nx * W.ny;
+  // hole = wound + ragged margin (mm); one long rip; suit field e > 0 means fabric
+  const ph = [r() * 6.28, r() * 6.28, r() * 6.28], rip = r() * 6.28;
+  const e = new Float32Array(n);
+  for (let k = 0; k < n; k++) {
+    const i = k % W.nx, j = Math.floor(k / W.nx);
+    const x = -W.Lx / 2 + i * W.dx, z = -W.Ly / 2 + j * W.dx, th = Math.atan2(z, x);
+    const dRip = Math.atan2(Math.sin(th - rip), Math.cos(th - rip));
+    let m = 9 + 6 * Math.sin(2 * th + ph[0]) + 2.5 * Math.sin(5 * th + ph[1]) + 1.2 * Math.sin(13 * th + ph[2])
+          + 0.5 * Math.sin(0.9 * x + 1.7 * z) + 0.35 * Math.sin(2.3 * x - 1.9 * z);
+    m = Math.max(0.6, m) + 22 * Math.exp(-((dRip / 0.18) ** 2));          // a long rip in one direction
+    e[k] = -W.sd[k] - m;
+  }
+  W.suit = e;
+  const g = new THREE.PlaneGeometry(W.Lx * s, W.Ly * s, W.nx - 1, W.ny - 1);
+  g.rotateX(-Math.PI / 2);
+  const pos = g.attributes.position.array, col = new Float32Array(n * 3);
+  for (let k = 0; k < n; k++) {
+    const i = k % W.nx, j = Math.floor(k / W.nx);
+    const x = -W.Lx / 2 + i * W.dx, z = -W.Ly / 2 + j * W.dx;
+    const edge = clamp(e[k] / 2.5, 0, 1);                               // 0 at the tear, 1 inside the fabric
+    const rib = 0.5 + 0.5 * Math.sin((x + z) * 2 * Math.PI / 1.6);      // diagonal knit
+    const wr = 0.5 + 0.5 * Math.sin(x / 7 + 0.6 * Math.sin(z / 9)) * Math.sin(z / 6);   // wrinkles
+    let c = mix(SUIT.shade, SUIT.yellow, 0.55 + 0.3 * rib * edge + 0.15 * wr);
+    c = mix(SUIT.fray, c, 0.35 + 0.65 * edge);
+    col.set(c, 3 * k);
+    pos[3 * k + 1] = (SUIT.lift + SUIT.curl * (1 - edge) ** 2 + 0.35 * wr) * s;
+  }
+  g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+  const idx = g.index.array, keep = [];                                  // only fabric triangles
+  for (let t = 0; t < idx.length; t += 3)
+    if (e[idx[t]] > 0 && e[idx[t + 1]] > 0 && e[idx[t + 2]] > 0) keep.push(idx[t], idx[t + 1], idx[t + 2]);
+  g.setIndex(keep); g.computeVertexNormals();
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, side: THREE.DoubleSide });
+  view.suit = new THREE.Mesh(g, mat); view.suit.castShadow = true; view.suit.receiveShadow = true;
+  view.scene.add(view.suit);
+  // loose threads along the tear
+  const th = [], tc = [];
+  for (let k = 0; k < n; k++) if (e[k] > 0 && e[k] < W.dx * 1.5 && r() < 0.22) {
+    const i = k % W.nx, j = Math.floor(k / W.nx);
+    const x = -W.Lx / 2 + i * W.dx, z = -W.Ly / 2 + j * W.dx;
+    const a = r() * 6.28, L = 0.8 + 1.8 * r(), y = SUIT.lift + SUIT.curl;
+    th.push(x * s, y * s, z * s, (x + L * Math.cos(a)) * s, (y - 0.4 * r()) * s, (z + L * Math.sin(a)) * s);
+    tc.push(...SUIT.shade, ...SUIT.yellow);
+  }
+  const tg = new LineSegmentsGeometry(); tg.setPositions(th); tg.setColors(tc);
+  const tm = new LineMaterial({ linewidth: 1.2, vertexColors: true });
+  const cv = view.renderer.domElement; tm.resolution.set(cv.clientWidth || 400, cv.clientHeight || 300);
+  view.threads = new LineSegments2(tg, tm); view.scene.add(view.threads);
+}
+
 // Body hair, to scale: terminal hairs ~5-14 mm long, ~70 um thick, standing at 55-80 deg
 // and lying towards the skin along a smooth "hair stream" direction; ~10 hairs/cm^2.
 const HAIR = { density: 0.10, lMean: 8, lSpread: 0.35, angle0: [55, 80], segs: 6, widthPx: 1.2 };
 function buildHair(view) {
   if (view.hair) { view.scene.remove(view.hair); view.hair.geometry.dispose(); view.hair.material.dispose(); }
   const s = view.s, r = rng(11), cand = [];
-  for (let k = 0; k < W.nx * W.ny; k++) if (W.sd[k] < -1.5) cand.push(k);   // roots >= 1.5 mm from the wound
+  for (let k = 0; k < W.nx * W.ny; k++)
+    if (W.sd[k] < -1.5 && W.suit[k] < -0.8) cand.push(k);    // exposed skin only, not under the suit
   const skinArea = cand.length * W.dx * W.dx;                                 // mm^2
   const N = Math.min(7000, Math.round(HAIR.density * skinArea));
   const pos = new Float32Array(N * HAIR.segs * 6), colr = new Float32Array(N * HAIR.segs * 6);
@@ -342,7 +409,8 @@ function buildMesh(view) {
   g.rotateX(-Math.PI / 2);
   g.setAttribute("color", new THREE.BufferAttribute(new Float32Array(W.nx * W.ny * 3), 3));
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.78, metalness: 0 });
-  view.mesh = new THREE.Mesh(g, mat); view.scene.add(view.mesh); view.s = s; view.lastD = -1;
+  view.mesh = new THREE.Mesh(g, mat); view.mesh.receiveShadow = true;
+  view.scene.add(view.mesh); view.s = s; view.lastD = -1;
 }
 function paint(view, d) {
   const furry = !!view.furry;
@@ -381,6 +449,7 @@ function resize() {
     if (c.width !== Math.round(w * v.renderer.getPixelRatio())) {
       v.renderer.setSize(w, h, false); v.cam.aspect = w / h; v.cam.updateProjectionMatrix();
       if (v.hair) v.hair.material.resolution.set(w, h);
+      if (v.threads) v.threads.material.resolution.set(w, h);
     }
   }
 }
@@ -394,6 +463,7 @@ function recompute() {
   $("vH").textContent = H.toFixed(1) + " mm";
   buildWound(L, Wd, H, $("shape").value);
   for (const v of VIEWS) buildMesh(v);
+  buildSuit(VW);
   buildHair(VW);
   T.h = tHuman(W.dmax, "blank"); T.s = tHuman(W.dmax, "scaffold"); T.w = W.dmax / V_WOLV;
   T.tMin = 0.1; T.tMax = T.h * 1.15;
